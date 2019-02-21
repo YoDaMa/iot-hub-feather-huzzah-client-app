@@ -1,12 +1,11 @@
+
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 // Please use an Arduino IDE 1.6.8 or greater
 
 #include <ESP8266WiFi.h>
-#include <WiFiClientSecure.h>
 #include <WiFiUdp.h>
-
 #include <AzureIoTHub.h>
 #include <AzureIoTProtocol_MQTT.h>
 #include <AzureIoTUtility.h>
@@ -35,6 +34,7 @@ void initWifi()
     Serial.printf("Attempting to connect to SSID: %s.\r\n", ssid);
 
     // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+
     WiFi.begin(ssid, pass);
     while (WiFi.status() != WL_CONNECTED)
     {
@@ -102,7 +102,7 @@ void setup()
     IoTHubClient_LL_SetOption(iotHubClientHandle, "product_info", "HappyPath_AdafruitFeatherHuzzah-C");
     IoTHubClient_LL_SetMessageCallback(iotHubClientHandle, receiveMessageCallback, NULL);
     IoTHubClient_LL_SetDeviceMethodCallback(iotHubClientHandle, deviceMethodCallback, NULL);
-    IoTHubClient_LL_SetDeviceTwinCallback(iotHubClientHandle, twinCallback, NULL);
+    // IoTHubClient_LL_SetDeviceTwinCallback(iotHubClientHandle, twinCallback, NULL);
 }
 
 static int messageCount = 1;

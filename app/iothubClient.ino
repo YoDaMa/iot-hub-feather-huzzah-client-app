@@ -1,33 +1,234 @@
+#include <EEPROM.h>
+#include <Adafruit_Sensor.h>
+#include <ArduinoJson.h>
+
 static WiFiClientSecure sslClient; // for ESP8266
 
 const char *onSuccess = "\"Successfully invoke device method\"";
 const char *notFound = "\"No method found\"";
 
-/*
- * The new version of AzureIoTHub library change the AzureIoTHubClient signature.
- * As a temporary solution, we will test the definition of AzureIoTHubVersion, which is only defined
- *    in the new AzureIoTHub library version. Once we totally deprecate the last version, we can take
- *    the #ifdef out.
- *
- * AzureIotHub library remove AzureIoTHubClient class in 1.0.34, so we remove the code below to avoid
- *    compile error
-*/
+void initSensor()
+{
+    // use SIMULATED_DATA, no sensor need to be inited
+}
 
-/*
- * #ifdef AzureIoTHubVersion
- * static AzureIoTHubClient iotHubClient;
- * void initIoThubClient()
- * {
- *     iotHubClient.begin(sslClient);
- * }
- * #else
- * static AzureIoTHubClient iotHubClient(sslClient);
- * void initIoThubClient()
- * {
- *     iotHubClient.begin();
- * }
- * #endif
+float readTemperature()
+{
+    return random(20, 30);
+}
+
+float readHumidity()
+{
+    return random(30, 40);
+}
+
+
+bool readMessage(int messageId, char *payload)
+{
+    float temperature = readTemperature();
+    float humidity = readHumidity();
+    StaticJsonBuffer<MESSAGE_MAX_LEN> jsonBuffer;
+    JsonObject &root = jsonBuffer.createObject();
+    root["deviceId"] = DEVICE_ID;
+    root["messageId"] = messageId;
+    bool temperatureAlert = false;
+
+    // NAN is not the valid json, change it to NULL
+    if (std::isnan(temperature))
+    {
+        root["temperature"] = NULL;
+    }
+    else
+    {
+        root["temperature"] = temperature;
+        if (temperature > TEMPERATURE_ALERT)
+        {
+            temperatureAlert = true;
+        }
+    }
+
+    if (std::isnan(humidity))
+    {
+        root["humidity"] = NULL;
+    }
+    else
+    {
+        root["humidity"] = humidity;
+    }
+    root.printTo(payload, MESSAGE_MAX_LEN);
+    return temperatureAlert;
+}
+
+// void parseTwinMessage(char *message)
+// {
+//     StaticJsonBuffer<MESSAGE_MAX_LEN> jsonBuffer;
+//     JsonObject &root = jsonBuffer.parseObject(message);
+//     if (!root.success())
+//     {
+//         Serial.printf("Parse %s failed.\r\n", message);
+//         return;
+//     }
+
+//     if (root["desired"]["interval"].success())
+//     {
+//         interval = root["desired"]["interval"];
+//     }
+//     else if (root.containsKey("interval"))
+//     {
+//         interval = root["interval"];
+//     }
+// }
+
+
+void initSerial()
+{
+    // Start serial and initialize stdout
+    Serial.begin(115200);
+    Serial.setDebugOutput(true);
+    Serial.println("Serial successfully inited.");
+}
+
+/* Read a string whose length should in (0, lengthLimit) from Serial and save it into buf.
+ *
+ *        prompt   - the interact message and buf should be allocaled already and return true.
+ *        buf      - a part of memory which is already allocated to save string read from serial
+ *        maxLen   - the buf's len, which should be upper bound of the read-in string's length, this should > 0
+ *        timeout  - If after timeout(ms), return false with nothing saved to buf.
+ *                   If no timeout <= 0, this function will not return until there is something read.
  */
+bool readFromSerial(char * prompt, char * buf, int maxLen, int timeout)
+{
+    int timer = 0, delayTime = 1000;
+    String input = "";
+    if(maxLen <= 0)
+    {
+        // nothing can be read
+        return false;
+    }
+
+    Serial.println(prompt);
+    while(1)
+    {
+        input = Serial.readString();
+        int len = input.length();
+        if(len > maxLen)
+        {
+            Serial.printf("Your input should less than %d character(s), now you input %d characters.\r\n", maxLen, len);
+        }
+        else if (len > 0)
+        {
+            // save the input into the buf
+            sprintf(buf, "%s", input.c_str());
+            return true;
+        }
+
+        // if timeout, return false directly
+        timer += delayTime;
+        if(timeout > 0 && timer >= timeout)
+        {
+            Serial.println("You input nothing, skip...");
+            return false;
+        }
+        // delay a time before next read
+        delay(delayTime);
+    }
+}
+
+
+// Read parameters from EEPROM or Serial
+void readCredentials()
+{
+    int ssidAddr = 0;
+    int passAddr = ssidAddr + SSID_LEN;
+    int connectionStringAddr = passAddr + SSID_LEN;
+
+    // malloc for parameters
+    ssid = (char *)malloc(SSID_LEN);
+    pass = (char *)malloc(PASS_LEN);
+    connectionString = (char *)malloc(CONNECTION_STRING_LEN);
+
+    // try to read out the credential information, if failed, the length should be 0.
+    int ssidLength = EEPROMread(ssidAddr, ssid);
+    int passLength = EEPROMread(passAddr, pass);
+    int connectionStringLength = EEPROMread(connectionStringAddr, connectionString);
+
+    if (ssidLength > 0 && passLength > 0 && connectionStringLength > 0 && !needEraseEEPROM())
+    {
+        return;
+    }
+
+    // read from Serial and save to EEPROM
+    readFromSerial("Input your Wi-Fi SSID: ", ssid, SSID_LEN, 0);
+    EEPROMWrite(ssidAddr, ssid, strlen(ssid));
+
+    readFromSerial("Input your Wi-Fi password: ", pass, PASS_LEN, 0);
+    EEPROMWrite(passAddr, pass, strlen(pass));
+
+    readFromSerial("Input your Azure IoT hub device connection string: ", connectionString, CONNECTION_STRING_LEN, 0);
+    EEPROMWrite(connectionStringAddr, connectionString, strlen(connectionString));
+}
+
+bool needEraseEEPROM()
+{
+    char result = 'n';
+    readFromSerial("Do you need re-input your credential information?(Auto skip this after 5 seconds)[Y/n]", &result, 1, 5000);
+    if (result == 'Y' || result == 'y')
+    {
+        clearParam();
+        return true;
+    }
+    return false;
+}
+
+// reset the EEPROM
+void clearParam()
+{
+    char data[EEPROM_SIZE];
+    memset(data, '\0', EEPROM_SIZE);
+    EEPROMWrite(0, data, EEPROM_SIZE);
+}
+
+#define EEPROM_END 0
+#define EEPROM_START 1
+void EEPROMWrite(int addr, char *data, int size)
+{
+    EEPROM.begin(EEPROM_SIZE);
+    // write the start marker
+    EEPROM.write(addr, EEPROM_START);
+    addr++;
+    for (int i = 0; i < size; i++)
+    {
+        EEPROM.write(addr, data[i]);
+        addr++;
+    }
+    EEPROM.write(addr, EEPROM_END);
+    EEPROM.commit();
+    EEPROM.end();
+}
+
+// read bytes from addr util '\0'
+// return the length of read out.
+int EEPROMread(int addr, char *buf)
+{
+    EEPROM.begin(EEPROM_SIZE);
+    int count = -1;
+    char c = EEPROM.read(addr);
+    addr++;
+    if (c != EEPROM_START)
+    {
+        return 0;
+    }
+    while (c != EEPROM_END && count < EEPROM_SIZE)
+    {
+        c = (char)EEPROM.read(addr);
+        count++;
+        addr++;
+        buf[count] = c;
+    }
+    EEPROM.end();
+    return count;
+}
+
 
 static void sendCallback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void *userContextCallback)
 {
@@ -144,18 +345,15 @@ int deviceMethodCallback(
     return result;
 }
 
-void twinCallback(
-    DEVICE_TWIN_UPDATE_STATE updateState,
-    const unsigned char *payLoad,
-    size_t size,
-    void *userContextCallback)
-{
-    char *temp = (char *)malloc(size + 1);
-    for (int i = 0; i < size; i++)
-    {
-        temp[i] = (char)(payLoad[i]);
-    }
-    temp[size] = '\0';
-    parseTwinMessage(temp);
-    free(temp);
-}
+// void twinCallback(
+//     DEVICE_TWIN_UPDATE_STATE updateState,
+//     const unsigned char *payLoad,
+//     size_t size,
+//     void *userContextCallback)
+// {
+//     char *temp = (char *)malloc(size + 1);
+//     memcpy(temp,payLoad,size);
+//     temp[size] = '\0';
+//     parseTwinMessage(temp);
+//     free(temp);
+// }
