@@ -23,6 +23,7 @@ static int interval = INTERVAL;
 
 void blinkLED()
 {
+    Serial.println("BlinkLED");
     digitalWrite(LED_PIN, HIGH);
     delay(500);
     digitalWrite(LED_PIN, LOW);
@@ -34,7 +35,8 @@ void initWifi()
     Serial.printf("Attempting to connect to SSID: %s.\r\n", ssid);
 
     // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-
+    ssid = "network name";
+    pass = "fakepassword";
     WiFi.begin(ssid, pass);
     while (WiFi.status() != WL_CONNECTED)
     {
@@ -90,8 +92,7 @@ void setup()
      * AzureIotHub library remove AzureIoTHubClient class in 1.0.34, so we remove the code below to avoid
      *    compile error
     */
-
-    // initIoThubClient();
+    connectionString = "HostName=yosephhub.azure-devices.net;DeviceId=test_device;SharedAccessKey=7A38hD2sBaI5hcfOHhm5j6qMVTVIk0UH3ngnKbIOW+Y=";
     iotHubClientHandle = IoTHubClient_LL_CreateFromConnectionString(connectionString, MQTT_Protocol);
     if (iotHubClientHandle == NULL)
     {
@@ -99,10 +100,12 @@ void setup()
         while (1);
     }
 
+    bool logBool = true;
     IoTHubClient_LL_SetOption(iotHubClientHandle, "product_info", "HappyPath_AdafruitFeatherHuzzah-C");
+    IoTHubClient_LL_SetOption(iotHubClientHandle, "logtrace", &logBool); 
     IoTHubClient_LL_SetMessageCallback(iotHubClientHandle, receiveMessageCallback, NULL);
     IoTHubClient_LL_SetDeviceMethodCallback(iotHubClientHandle, deviceMethodCallback, NULL);
-    // IoTHubClient_LL_SetDeviceTwinCallback(iotHubClientHandle, twinCallback, NULL);
+    IoTHubClient_LL_SetDeviceTwinCallback(iotHubClientHandle, twinCallback, NULL);
 }
 
 static int messageCount = 1;
@@ -114,8 +117,11 @@ void loop()
         bool temperatureAlert = readMessage(messageCount, messagePayload);
         sendMessage(iotHubClientHandle, messagePayload, temperatureAlert);
         messageCount++;
-        delay(interval);
+        delay(10); // change to delay(interval) later on
     }
+    LogInfo("Do Work Being Called");
     IoTHubClient_LL_DoWork(iotHubClientHandle);
+    blinkLED();
     delay(10);
+    yield();
 }

@@ -59,25 +59,25 @@ bool readMessage(int messageId, char *payload)
     return temperatureAlert;
 }
 
-// void parseTwinMessage(char *message)
-// {
-//     StaticJsonBuffer<MESSAGE_MAX_LEN> jsonBuffer;
-//     JsonObject &root = jsonBuffer.parseObject(message);
-//     if (!root.success())
-//     {
-//         Serial.printf("Parse %s failed.\r\n", message);
-//         return;
-//     }
+void parseTwinMessage(char *message)
+{
+    StaticJsonBuffer<MESSAGE_MAX_LEN> jsonBuffer;
+    JsonObject &root = jsonBuffer.parseObject(message);
+    if (!root.success())
+    {
+        Serial.printf("Parse %s failed.\r\n", message);
+        return;
+    }
 
-//     if (root["desired"]["interval"].success())
-//     {
-//         interval = root["desired"]["interval"];
-//     }
-//     else if (root.containsKey("interval"))
-//     {
-//         interval = root["interval"];
-//     }
-// }
+    if (root["desired"]["interval"].success())
+    {
+        interval = root["desired"]["interval"];
+    }
+    else if (root.containsKey("interval"))
+    {
+        interval = root["interval"];
+    }
+}
 
 
 void initSerial()
@@ -345,15 +345,15 @@ int deviceMethodCallback(
     return result;
 }
 
-// void twinCallback(
-//     DEVICE_TWIN_UPDATE_STATE updateState,
-//     const unsigned char *payLoad,
-//     size_t size,
-//     void *userContextCallback)
-// {
-//     char *temp = (char *)malloc(size + 1);
-//     memcpy(temp,payLoad,size);
-//     temp[size] = '\0';
-//     parseTwinMessage(temp);
-//     free(temp);
-// }
+void twinCallback(
+    DEVICE_TWIN_UPDATE_STATE updateState,
+    const unsigned char *payLoad,
+    size_t size,
+    void *userContextCallback)
+{
+    char *temp = (char *)malloc(size + 1);
+    memcpy(temp,payLoad,size);
+    temp[size] = '\0';
+    parseTwinMessage(temp);
+    free(temp);
+}
